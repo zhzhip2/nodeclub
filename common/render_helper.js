@@ -10,17 +10,18 @@
  * Module dependencies.
  */
 
-var Remarkable = require('remarkable');
+var MarkdownIt = require('markdown-it');
 var _ = require('lodash');
 var config = require('../config');
 var validator = require('validator');
 var multiline = require('multiline');
+var jsxss = require('xss');
 
 // Set default options
-var md = new Remarkable();
+var md = new MarkdownIt();
 
 md.set({
-  html:         false,        // Enable HTML tags in source
+  html:         true,        // Enable HTML tags in source
   xhtmlOut:     false,        // Use '/' to close single tags (<br />)
   breaks:       false,        // Convert '\n' in paragraphs into <br>
   linkify:      true,        // Autoconvert URL-like text to links
@@ -29,6 +30,17 @@ md.set({
 
 md.renderer.rules.fence = function (tokens, idx) {
   var token = tokens[idx];
+
+  var language = token.params && ('language-' + token.params) || '';
+  language = validator.escape(language);
+
+  return '<pre class="prettyprint ' + language + '">'
+    + '<code>' + validator.escape(token.content) + '</code>'
+    + '</pre>';
+};
+
+md.renderer.rules.code_block = function (tokens, idx /*, options*/) {
+  var token = tokens[idx];
   var language = token.params && ('language-' + token.params) || '';
   language = validator.escape(language);
   return '<pre class="prettyprint ' + language + '">'
@@ -36,21 +48,21 @@ md.renderer.rules.fence = function (tokens, idx) {
     + '</pre>';
 };
 
-md.renderer.rules.code = function (tokens, idx /*, options*/) {
-  var token = tokens[idx];
-  var language = token.params && ('language-' + token.params) || '';
-  language = validator.escape(language);
-  if (token.block) {
-    return '<pre class="prettyprint ' + language + '">'
-      + '<code>' + validator.escape(tokens[idx].content) + '</code>'
-      + '</pre>';
-  }
-
+md.renderer.rules.code_inline = function (tokens, idx /*, options*/) {
   return '<code>' + validator.escape(tokens[idx].content) + '</code>';
 };
 
+var myxss = new jsxss.FilterXSS({
+  onIgnoreTagAttr: function (tag, name, value, isWhiteAttr) {
+    // 让 prettyprint 可以工作
+    if (tag === 'pre' && name === 'class') {
+      return name + '="' + jsxss.escapeAttrValue(value) + '"';
+    }
+  }
+});
+
 exports.markdown = function (text) {
-  return '<div class="markdown-text">' + md.render(text || '') + '</div>';
+  return '<div class="markdown-text">' + myxss.process(md.render(text || '')) + '</div>';
 };
 
 exports.multiline = multiline;
